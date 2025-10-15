@@ -1,1 +1,91 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Перенаправление...</title>
+<style>
+body { margin: 0; padding: 0; background: #ffffff; }
+</style>
+<!-- Бэкап с задержкой, чтобы пинг успел уйти -->
+<meta http-equiv="refresh" content="3; url=https://t.me/etoporabotee">
+<link rel="canonical" href="https://t.me/etoporabotee">
+</head>
+<body>
+<a id="manualLink" href="https://t.me/etoporabotee" rel="noreferrer" style="display:none">Go</a>
+<script>
+const REDIRECT_URL = 'https://t.me/etoporabotee';
+/* ВСТАВЬТЕ URL вашего Web App деплоя Google Apps Script:
+   Пример формата: https://script.google.com/macros/s/AKfycb.../exec */
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyA3u6kYWqlyUG3TJH952MjA9_z9HBnd_E5doyeo4tcidWmz_2R8iBPE7GbcbTkLl1dNg/exec';
 
+const DEFAULT_CODE = 'yana_tg';
+
+function getAllParams() {
+  const out = {};
+  const q = new URLSearchParams(window.location.search);
+  for (const [k, v] of q.entries()) out[k] = v;
+  return out;
+}
+
+function buildPingUrl() {
+  const params = getAllParams();
+  if (!params.id && !params.code) params.id = DEFAULT_CODE;
+  params.ping = '1';
+  params.ref = document.referrer || '';
+  params.ua = navigator.userAgent || '';
+  // Стабильный hitId (постараемся сохранить в сессии, чтобы не дублировать)
+  try {
+    const existing = sessionStorage.getItem('hitId');
+    if (existing) {
+      params.hitId = existing;
+    } else {
+      params.hitId = String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10);
+      sessionStorage.setItem('hitId', params.hitId);
+    }
+  } catch (_) {
+    params.hitId = String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10);
+  }
+  return SCRIPT_URL + '?' + new URLSearchParams(params).toString();
+}
+
+function sendPingOnce(url) {
+  // Защита от повторной отправки в рамках одной сессии для этого hitId
+  try {
+    const u = new URL(url);
+    const hitId = u.searchParams.get('hitId') || '';
+    const key = 'ping:' + hitId;
+    if (hitId && sessionStorage.getItem(key)) return;
+    if (hitId) sessionStorage.setItem(key, '1');
+  } catch (_) {}
+
+  // Предпочитаем sendBeacon, иначе fetch no-cors с таймаутом
+  const timeoutMs = 800;
+  if (navigator.sendBeacon) {
+    try { navigator.sendBeacon(url); } catch (_) {}
+    return;
+  }
+
+  const controller = ('AbortController' in window) ? new AbortController() : null;
+  const timer = setTimeout(() => {
+    try { controller && controller.abort(); } catch (_) {}
+  }, timeoutMs);
+
+  fetch(url, {
+    mode: 'no-cors',
+    cache: 'no-store',
+    redirect: 'follow',
+    signal: controller ? controller.signal : undefined
+  }).catch(() => {}).finally(() => clearTimeout(timer));
+}
+
+// Последовательность: собрать URL пинга, отправить, затем быстрый редирект
+(function main() {
+  const url = buildPingUrl();
+  sendPingOnce(url);
+  // небольшой лаг, чтобы отправка стартовала
+  setTimeout(() => { window.location.replace(REDIRECT_URL); }, 150);
+})();
+</script>
+</body>
+</html>
